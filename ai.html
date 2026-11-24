@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071018">
+  <title>aRacer Pro — Gemini AI 分析</title>
+  <style>
+    :root{--bg:#071018;--card:#112330;--line:#294252;--txt:#eef8ff;--mut:#8ca8ba;--c:#25d6c4;--y:#ffd166;--r:#ff5f6d}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}main{max-width760px;margin:auto;padding:18px}
+    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.top a{color:var(--c);text-decoration:none}.card{background:linear-gradient(145deg,#173140,var(--card));border:1px solid var(--line);border-radius:18px;padding:14px;margin:10px 0}.mut{color:var(--mut);font-size:12px}
+    label{display:block;font-size:12px;color:var(--mut);margin-top:10px}input,select,textarea,button{width:100%;margin-top:5px;border-radius:12px;border:1px solid var(--line);background:#091720;color:var(--txt);font-size:15px;padding:11px}textarea{min-height:140px;resize:vertical}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}button{border:0;background:var(--c);color:#03231f;font-weight:800;cursor:pointer}button.secondary{background:#203945;color:var(--txt)}button:disabled{opacity:.55}.result{white-space:pre-wrap;line-height:1.55;font-size:14px}.alert{border-left:3px solid var(--c);padding:10px;background:#0b1822;border-radius:9px}.danger{border-left-color:var(--r)}
+  </style>
+</head>
+<body><main>
+  <div class="top"><strong>aRacer <span style="color:var(--c)">Gemini AI</span></strong><a href="./">← 回分析平台</a></div>
+  <div class="card"><div class="mut">支援匯入分析 JSON、一般文字、CSV 或 Log 摘要。請勿傳送個人識別資料。</div>
+    <label>匯入檔案<input id="file" type="file" accept=".json,.txt,.csv,.log"></label>
+  </div>
+  <div class="card">
+    <div class="row"><label>連線模式<select id="mode"><option value="proxy">後端 Proxy（建議）</option><option value="direct">瀏覽器直連</option></select></label><label>Gemini 模型<input id="model" value="gemini-2.5-flash"></label></div>
+    <label id="keyLabel">Gemini API Key（僅瀏覽器直連時使用）<input id="key" type="password" autocomplete="off" placeholder="AIza..."></label>
+    <label>Proxy 位址<input id="proxy" value="/api/gemini"></label>
+  </div>
+  <div class="card"><label>分析內容<textarea id="prompt" placeholder="匯入檔案或貼上 Log 摘要；系統會自動要求 Gemini 找出異常、風險與調校優先順序。"></textarea></label>
+    <div class="row"><button id="analyze">開始 AI 分析</button><button id="clear" class="secondary">清除</button></div>
+  </div>
+  <div class="card"><div id="status" class="mut">尚未分析</div><div id="result" class="result"></div></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const saved=JSON.parse(localStorage.getItem('aracer-gemini-settings')||'{}');
+if(saved.model) $('model').value=saved.model;if(saved.mode)$('mode').value=saved.mode;if(saved.proxy)$('proxy').value=saved.proxy;if(saved.directKey)$('key').value=saved.directKey;
+$('mode').onchange=()=>{$('keyLabel').style.display=$('mode').value==='direct'?'block':'none';};$('mode').onchange();
+
+$('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const text=await f.text();let summarized=text;if(f.name.endsWith('.json')){const d=JSON.parse(text);summarized=JSON.stringify(d,null,2).slice(0,30000)}else summarized=text.slice(0,30000);$('prompt').value=summarized;$('status').textContent=`已載入 ${f.name}`;}catch(x){$('status').textContent='檔案讀取失敗：'+x.message;$('result').innerHTML='<div class="alert danger">請確認檔案格式正確。</div>';}};
+
+function fullPrompt(source){return `你是一位摩托車／汽車 ECU 記錄分析助手。請只根據提供資料回答繁體中文，不可把推測當成已確認事實。請依序提供：\n1. 整體摘要\n2. 偵測到的異常與證據\n3. 風險等級（高／中／低）\n4. 調校優先順序與可調 ECU 表格\n5. 建議的下一次測試與安全注意事項\n資料：\n${source.slice(0,30000)}`}
+
+$('clear').onclick=()=>{$('prompt').value='';$('result').textContent='';$('status').textContent='尚未分析';};
+$('analyze').onclick=async()=>{const source=$('prompt').value.trim();if(!source)return alert('請先匯入或貼上分析資料');const mode=$('mode').value,model=$('model').value.trim(),key=$('key').value.trim(),proxy=$('proxy').value.trim(),prompt=fullPrompt(source);localStorage.setItem('aracer-gemini-settings',JSON.stringify({model,mode,proxy,directKey:mode==='direct'?key:''}));$('analyze').disabled=true;$('status').textContent='Gemini 正在分析…';$('result').textContent='';try{let data;if(mode==='direct'){if(!key)throw Error('請輸入 Gemini API Key');const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:.2,maxOutputTokens:2048}})});data=await r.json();if(!r.ok)throw Error(data.error?.message||'Gemini API 呼叫失敗');data={text:data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('\n')||''}}else{const r=await fetch(proxy,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,model})});data=await r.json();if(!r.ok)throw Error(data.error||'Proxy 呼叫失敗')} $('result').textContent=data.text||'Gemini 未返回文字內容';$('status').textContent=`分析完成 · ${model}`;}catch(x){$('status').textContent='分析失敗';$('result').innerHTML='<div class="alert danger"></div>';$('result').querySelector('.alert').textContent=x.message;}finally{$('analyze').disabled=false};};
+</script>
+</body>
+</html>

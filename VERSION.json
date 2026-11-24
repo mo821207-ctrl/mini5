@@ -1,0 +1,12 @@
+{
+  "version": "3.7.0",
+  "build": "2026-11-24",
+  "channel": "stable",
+  "changes": [
+    "新增 Gemini AI 日誌自動分析",
+    "新增智能異常偵測與調校建議",
+    "支援 Gemini 2.5 Flash",
+    "支援瀏覽器直連與後端 Proxy",
+    "新增獨立 AI 分析頁"
+  ]
+}
